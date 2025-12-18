@@ -47,3 +47,6 @@ Thumbs.db
 *.swp
 *.swo
 export/
+package.json
+package-lock.json
+

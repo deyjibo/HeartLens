@@ -146,7 +146,7 @@ const HomePage = () => {
                     cursor: "pointer",
                   }}
                   onClick={() =>
-                    window.open("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "_blank")
+                    window.open("", "_blank")
                   }
                 >
                   <FaPlay /> Watch Demo

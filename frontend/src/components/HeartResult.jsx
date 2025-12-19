@@ -1,18 +1,37 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import jsPDF from "jspdf";
+import pdfLogo from "./medinauts.PNG"; // PDF logo
 
-function calculateRisk(data) {
-  if (!data) return 0;
-  let score = 0;
-  if (Number(data.age) > 50) score += 15;
-  if (Number(data.chol) > 200) score += 15;
-  if (Number(data.trestbps) > 130) score += 10;
-  if (data.exang === "1" || data.exang === 1) score += 20;
-  if (data.cp === "2" || data.cp === "3" || data.cp === 2 || data.cp === 3) score += 15;
-  if (Number(data.thalach) < 120) score += 10;
-  if (Number(data.oldpeak) > 2.0) score += 15;
-  return Math.min(score, 95);
-}
+/* ---------------- PARAMETER LABELS ---------------- */
+const PARAMETER_LABELS = {
+  age: "AGE",
+  sex: "SEX",
+  cp: "CHEST PAIN TYPE",
+  trestbps: "RESTING BLOOD PRESSURE",
+  chol: "SERUM CHOLESTEROL",
+  fbs: "FASTING BLOOD SUGAR",
+  restecg: "RESTING ECG RESULTS",
+  thalach: "MAX HEART RATE",
+  exang: "EXERCISE INDUCED ANGINA",
+  oldpeak: "ST DEPRESSION",
+  slope: "ST SLOPE",
+  ca: "MAJOR VESSELS",
+  thal: "THALASSEMIA",
+};
+
+const formatValue = (key, value) => {
+  switch (key) {
+    case "sex": return value === "1" ? "Male" : "Female";
+    case "exang": return value === "1" ? "Yes" : "No";
+    case "fbs": return value === "1" ? "> 120 mg/dL" : "≤ 120 mg/dL";
+    case "chol": return `${value} mg/dL`;
+    case "trestbps": return `${value} mm Hg`;
+    case "thalach": return `${value} BPM`;
+    case "ca": return `${value} Vessels`;
+    default: return value;
+  }
+};
 
 const HeartResult = () => {
   const location = useLocation();
@@ -21,26 +40,26 @@ const HeartResult = () => {
 
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [patientName, setPatientName] = useState("");
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => (document.body.style.overflow = "auto");
+  }, []);
 
   useEffect(() => {
     if (!form) return;
 
     const fetchPrediction = async () => {
       try {
-        // 🔹 Replace the URL with your actual API endpoint
         const API_URL = process.env.REACT_APP_API_URL;
-
         const response = await fetch(`${API_URL}/predict`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(form),
         });
-
-
-        const data = await response.json();
-        setPrediction(data); // data: { prediction: 0/1, probability: 0.0-1.0 }
-      } catch (err) {
-        console.error("Prediction failed, using local heuristic:", err);
+        setPrediction(await response.json());
+      } catch {
         setPrediction(null);
       } finally {
         setLoading(false);
@@ -52,7 +71,74 @@ const HeartResult = () => {
 
   if (!form) return <p>No data provided</p>;
 
-  const riskScore = calculateRisk(form);
+  /* ---------------- PDF GENERATION ---------------- */
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const date = new Date().toLocaleDateString();
+    const diagnosis =
+      prediction?.prediction === 1
+        ? "POSITIVE FOR HEART DISEASE RISK"
+        : "NEGATIVE FOR HEART DISEASE RISK (NORMAL)";
+    const riskValue = prediction ? Math.round(prediction.probability * 100) : 0;
+
+    let y = 20;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("CARDIOLOGY REPORT", 105, y, { align: "center" });
+
+    y += 10;
+    doc.setFontSize(12);
+    doc.text("Patient Medical Report", 105, y, { align: "center" });
+
+    y += 10;
+    doc.setFont("helvetica", "normal");
+    doc.text(`Patient Name: ${patientName || "Patient"}`, 20, y);
+    doc.text(`Date: ${date}`, 150, y);
+
+    y += 20;
+    doc.setFont("helvetica", "bold");
+    doc.text("Cardiac Stress Test Parameters:", 20, y);
+
+    y += 10;
+    Object.entries(form).forEach(([key, value]) => {
+      if (!PARAMETER_LABELS[key]) return;
+      doc.setFont("helvetica", "normal");
+      doc.text(`${PARAMETER_LABELS[key]} : ${formatValue(key, value)}`, 25, y);
+      y += 8;
+    });
+
+    y += 10;
+    doc.setFont("helvetica", "bold");
+    doc.text("Diagnosis Conclusion:", 20, y);
+    doc.text(diagnosis, 20, y + 12);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`Estimated Risk Score: ${riskValue}%`, 20, y + 24);
+
+    // Bottom bold + underline line
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    const lineText = "This is a computer generated printout and no signature is required";
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    const textWidth = doc.getTextWidth(lineText);
+    const textX = (pageWidth - textWidth) / 2;
+    const textY = pageHeight - 65;
+    doc.text(lineText, textX, textY);
+    doc.setLineWidth(0.5);
+    doc.line(textX, textY + 1.5, textX + textWidth, textY + 1.5);
+
+    const logoWidth = 30;
+    const logoHeight = 30;
+    const logoX = (pageWidth - logoWidth) / 2;
+    const logoY = pageHeight - 45;
+    doc.addImage(pdfLogo, "PNG", logoX, logoY, logoWidth, logoHeight);
+
+    doc.text("Made by MediNauts © 2025", pageWidth / 2, pageHeight - 10, { align: "center" });
+
+    doc.save("Medical_Report.pdf");
+  };
 
   return (
     <div style={overlay}>
@@ -62,29 +148,32 @@ const HeartResult = () => {
         <h1 style={mainTitle}>Heart Disease Prediction Result</h1>
         <p style={subTitle}>Based on your submitted clinical parameters</p>
 
+        <div style={nameWrapper}>
+          <input
+            placeholder="Enter Patient Name"
+            value={patientName}
+            onChange={(e) => setPatientName(e.target.value)}
+            style={nameInput}
+          />
+        </div>
+
         <div style={resultBox}>
           {loading ? (
             <p>Loading prediction...</p>
           ) : (
             <>
               <h2 style={riskTitle}>
-                {prediction
-                  ? prediction.prediction === 1
-                    ? "⚠️ High Risk Detected"
-                    : "✅ Low Risk Detected"
-                  : riskScore >= 50
-                    ? "⚠️ High Risk Detected"
-                    : "✅ Low Risk Detected"}
+                {prediction?.prediction === 1 ? "⚠️ High Risk Detected" : "✅ Low Risk Detected"}
               </h2>
-
               <p style={riskPercentage}>
-                {prediction
-                  ? `Estimated Risk Score: ${Math.round(prediction.probability * 100)}%`
-                  : `Estimated Risk Score: ${riskScore}%`}
+                Estimated Risk Score: {prediction ? Math.round(prediction.probability * 100) : 0}%
               </p>
-
               {prediction && (
-                <div style={{ marginTop: 6, fontWeight: "bold", color: prediction.prediction === 1 ? "red" : "green" }}>
+                <div style={{
+                  marginTop: 6,
+                  fontWeight: "bold",
+                  color: prediction.prediction === 1 ? "red" : "green"
+                }}>
                   {prediction.prediction === 1
                     ? "⚠️ The model predicts that you have heart disease."
                     : "✅ The model predicts that you do not have heart disease."}
@@ -97,23 +186,36 @@ const HeartResult = () => {
         <h3 style={sectionTitle}>Your Entered Parameters</h3>
         <div style={grid}>
           {Object.entries(form).map(([key, value]) => (
-            <div key={key} style={infoItem}>
-              <span style={infoLabel}>{key.toUpperCase()} :</span>
-              <span style={infoValue}>{value}</span>
-            </div>
+            PARAMETER_LABELS[key] && (
+              <div key={key} style={infoItem}>
+                <span style={infoLabel}>{PARAMETER_LABELS[key]} :</span>
+                <span style={infoValue}>{formatValue(key, value)}</span>
+              </div>
+            )
           ))}
         </div>
 
         <div style={btnRow}>
           <button
-            style={newBtn}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundPosition = "left center")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundPosition = "right center")}
+            style={btn}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundPosition = "left center"}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundPosition = "right center"}
             onClick={() => navigate(-1)}
           >
             Analyze New Patient
           </button>
+          <button
+            style={btn}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundPosition = "left center"}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundPosition = "right center"}
+            onClick={generatePDF}
+          >
+            Generate PDF
+          </button>
         </div>
+
+        {/* Extra space at bottom */}
+        <div style={{ height: 30 }}></div>
       </div>
     </div>
   );
@@ -122,32 +224,55 @@ const HeartResult = () => {
 /* ---------------- STYLES ---------------- */
 const overlay = {
   position: "fixed",
-  top: 0, left: 0,
+  top: 0,
+  left: 0,
   width: "100vw",
   height: "100vh",
-  background: "rgba(0,0,0,0.5)",
+  background: "rgba(0,0,0,0.65)",
   backdropFilter: "blur(8px)",
-  display: "flex", justifyContent: "center", alignItems: "center",
-  zIndex: 1000, padding: "20px"
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 9999,
 };
+
 const card = {
-  width: "90%", maxWidth: "1000px",
-  background: "#fff", borderRadius: "20px",
-  padding: "30px 40px", boxShadow: "0 8px 25px rgba(0,0,0,0.25)",
-  position: "relative", maxHeight: "90vh", overflowY: "auto"
+  width: "90%",
+  maxWidth: 1000,
+  background: "#fff",
+  borderRadius: 20,
+  padding: "30px 40px",
+  position: "relative",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "flex-start",
 };
-const closeBtn = { position: "absolute", top: "18px", right: "20px", fontSize: "32px", border: "none", background: "none", cursor: "pointer", color: "#222" };
-const mainTitle = { fontSize: "28px", fontWeight: "700", textAlign: "center", color: "red", marginBottom: "5px" };
-const subTitle = { textAlign: "center", fontSize: "14px", color: "#666", marginBottom: "20px" };
-const resultBox = { background: "#f6f6f6", padding: "25px", borderRadius: "20px", textAlign: "center", marginBottom: "25px" };
-const riskTitle = { fontSize: "22px", fontWeight: "700", marginBottom: "8px" };
-const riskPercentage = { fontSize: "16px", color: "#444" };
-const sectionTitle = { fontSize: "18px", marginBottom: "10px", fontWeight: "600", borderBottom: "2px solid #ddd", paddingBottom: "5px", color: "#333" };
-const grid = { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "12px", marginBottom: "25px" };
-const infoItem = { background: "#fafafa", padding: "12px", borderRadius: "12px", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" };
-const infoLabel = { fontSize: "12px", fontWeight: "600", color: "#777" };
-const infoValue = { fontSize: "14px", fontWeight: "700", color: "#222" };
-const btnRow = { display: "flex", justifyContent: "center", marginTop: "10px" };
-const newBtn = { backgroundSize: "200% auto", backgroundImage: "linear-gradient(to right,#00008b 0%,#00008b 50%,#ff0000 50%,#ff0000 100%)", color: "#fff", padding: "12px 20px", borderRadius: "15px", border: "none", fontSize: "14px", cursor: "pointer", transition: "0.4s ease", backgroundPosition: "right center" };
+
+const closeBtn = { position: "absolute", top: 15, right: 20, fontSize: 30, border: "none", background: "none" };
+const mainTitle = { textAlign: "center", color: "red", fontWeight: 700 };
+const subTitle = { textAlign: "center", marginBottom: 20 };
+const nameWrapper = { display: "flex", justifyContent: "center", marginBottom: 20 };
+const nameInput = { width: "60%", padding: 12, borderRadius: 12, border: "1px solid #ccc", textAlign: "center" };
+const resultBox = { background: "#f6f6f6", padding: 20, borderRadius: 20, textAlign: "center", marginBottom: 20 };
+const riskTitle = { fontSize: 22, fontWeight: 700 };
+const riskPercentage = { fontSize: 16 };
+const sectionTitle = { fontWeight: 600, marginBottom: 10 };
+const grid = { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 };
+const infoItem = { background: "#fafafa", padding: 12, borderRadius: 12 };
+const infoLabel = { fontSize: 12, fontWeight: 600 };
+const infoValue = { fontSize: 14, fontWeight: 700 };
+const btnRow = { display: "flex", justifyContent: "center", gap: 14, marginTop: 25 };
+const btn = {
+  backgroundSize: "200% auto",
+  backgroundImage:
+    "linear-gradient(to right,#00008b 0%,#00008b 50%,#ff0000 50%,#ff0000 100%)",
+  color: "#fff",
+  padding: "12px 22px",
+  borderRadius: 15,
+  border: "none",
+  cursor: "pointer",
+  transition: "0.4s ease",
+  backgroundPosition: "right center",
+};
 
 export default HeartResult;

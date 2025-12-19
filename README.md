@@ -14,7 +14,7 @@ A simple and intelligent **Heart Disease Prediction application** built with **R
 ## Live Demo
 
 👉 Check out the live app:  
-[Heart Disease Prediction App](https://care4heart.netlify.app/)
+[Heart Disease Prediction App](https://medinauts.netlify.app/)
 
 ---
 

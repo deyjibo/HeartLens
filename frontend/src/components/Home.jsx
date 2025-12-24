@@ -156,7 +156,7 @@ const HomePage = () => {
               {/* Stats */}
               <div style={{ display: "flex", gap: "70px" }}>
                 <div>
-                  <p style={{ margin: 0, fontSize: "30px", fontWeight: "800" }}>98%</p>
+                  <p style={{ margin: 0, fontSize: "30px", fontWeight: "800" }}>100%</p>
                   <span style={{ fontSize: "15px", color: "#465269" }}>
                     Accuracy Rate
                   </span>

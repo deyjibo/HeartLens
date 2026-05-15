@@ -13,8 +13,7 @@ A simple and intelligent **Heart Disease Prediction application** built with **R
 
 ## Live Demo
 
-👉 Check out the live app:  
-[HeartLens](https://medinauts.netlify.app/)
+👉 Check out the live app:  [HeartLens](https://medinauts.netlify.app/)
 
 ---
 
